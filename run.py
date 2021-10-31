@@ -1,12 +1,18 @@
 import subprocess
-from youtube_dl import YoutubeDL
-import json
-from urllib.parse import urlparse, parse_qs
+from yt_dlp import YoutubeDL
 
 def get_download_link(link):
     with YoutubeDL() as y:
         r = y.extract_info(link, download=False)
-        return r['formats'][-1]['url']
+        formats = r['formats']
+        # sort all formats by size, highest is probably the best quality mp4.
+        sorted_formats = list(sorted([f for f in formats if f['filesize']], key=lambda x: int(x['filesize']), reverse=False))
+        best_audio = [x for x in sorted_formats if x['acodec'] != 'none' and x['fps'] == None][-1]
+        best_video = sorted_formats[-1]
+
+        print('Using video:', best_video['format_note'])
+        print('Using audio:', best_audio['format_note'])
+        return best_video['url'], best_audio['url']
 
 
 def to_seconds(time_string):
@@ -14,11 +20,11 @@ def to_seconds(time_string):
     return (int(mins) * 60) + int(secs)
 
 def construct_timestamps(s):
-    stride = 3
+    stride = 2
     entries = s.split('::')
     timestamps = []
     print(entries)
-    for i in range(0, len(entries), stride):
+    for i in range(1, len(entries), stride):
         start, end = entries[i].split('-')
         timestamps.append((to_seconds(start), to_seconds(end)))
 
@@ -39,32 +45,16 @@ def parse_document(path):
 
 video_url, timestamps = parse_document('/home/joakim/Desktop/maps_of_meaning.txt')
 
-print(video_url)
-print(timestamps)
-
-true_url = get_download_link(video_url)
-
-fade = 0.05
-# Build ffmpeg command
-
-#target_file = 'video.mp4'
-target_file = true_url
+vid_url, audio_url = get_download_link(video_url)
 
 COMMAND = 'ffmpeg '
-for start, end in timestamps:
-    COMMAND += f'-ss {start} -to {end} -i "{target_file}" ' # Not fast-seeking seems incredibly slow, so thats why we do this
+channels = ''
+for i, (start, end) in enumerate(timestamps):
+    COMMAND += f'-ss {start} -to {end} -i "{vid_url}" -ss {start} -to {end} -i "{audio_url}" ' # Not fast-seeking seems incredibly slow, so thats why we do this
+    channels += f'[{i * 2}:v][{(i * 2) + 1}:a]'
 
-complex_filter = '[0:v]setpts=PTS-STARTPTS[0v];[0:a]asetpts=PTS-STARTPTS[0a];'
-voffset = (timestamps[0][1] - timestamps[0][0]) - fade
+COMMAND += f'-filter_complex "{channels}concat=n={i + 1}:v=1:a=1[v][a]" -map "[v]" -map "[a]" output.mp4'
 
-for i, (start, end) in enumerate(timestamps[1:], 1):
-    complex_filter += f'[{i}:v]setpts=PTS-STARTPTS[{i}v];[{i}:a]asetpts=PTS-STARTPTS[{i}a];'
-    complex_filter += f'[{i-1}v][{i}v]xfade=offset={voffset:.3f}:duration={fade:.3f}[{i}v];[{i-1}a][{i}a]acrossfade=duration={fade}[{i}a];'
-    voffset += (end - start) - fade
-
-    COMMAND = f"{COMMAND} -filter_complex '{complex_filter[:-1]}' -map '[{i}v]' -map '[{i}a]' output.mp4"
-
-#PLAN: https://unix.stackexchange.com/questions/230481/how-to-download-portion-of-video-with-youtube-dl-command
-
-#output = subprocess.run(COMMAND, shell=True, capture_output=True)
-print(COMMAND)
+proc = subprocess.run(COMMAND, shell=True, capture_output=True)
+print(proc.stdout)
+print(proc.stderr)
