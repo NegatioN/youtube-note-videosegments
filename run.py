@@ -1,5 +1,13 @@
+import os
 import subprocess
 from yt_dlp import YoutubeDL
+import argparse
+
+parser = argparse.ArgumentParser(description='Create highlight-clip from notes.')
+parser.add_argument('-f', '--filepath', type=str)
+parser.add_argument('-t', '--targetpath', type=str)
+args = parser.parse_args()
+video_filename = os.path.basename(args.filepath).split('.')[0]
 
 def get_download_link(link):
     with YoutubeDL() as y:
@@ -23,7 +31,6 @@ def construct_timestamps(s):
     stride = 2
     entries = s.split('::')
     timestamps = []
-    print(entries)
     for i in range(1, len(entries), stride):
         start, end = entries[i].split('-')
         timestamps.append((to_seconds(start), to_seconds(end)))
@@ -43,7 +50,7 @@ def parse_document(path):
         timestamps = construct_timestamps(content)
     return url, timestamps
 
-video_url, timestamps = parse_document('/home/joakim/Desktop/maps_of_meaning.txt')
+video_url, timestamps = parse_document(args.filepath)
 
 vid_url, audio_url = get_download_link(video_url)
 
@@ -53,7 +60,7 @@ for i, (start, end) in enumerate(timestamps):
     COMMAND += f'-ss {start} -to {end} -i "{vid_url}" -ss {start} -to {end} -i "{audio_url}" ' # Not fast-seeking seems incredibly slow, so thats why we do this
     channels += f'[{i * 2}:v][{(i * 2) + 1}:a]'
 
-COMMAND += f'-filter_complex "{channels}concat=n={i + 1}:v=1:a=1[v][a]" -map "[v]" -map "[a]" output.mp4'
+COMMAND += f'-filter_complex "{channels}concat=n={i + 1}:v=1:a=1[v][a]" -map "[v]" -map "[a]" {os.path.join(args.targetpath, video_filename)}.mp4'
 
 proc = subprocess.run(COMMAND, shell=True, capture_output=True)
 print(proc.stdout)
