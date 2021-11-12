@@ -41,8 +41,8 @@ def parse_document(path):
     '''
         Document format:
         Line 1: a youtube URL
-        Other lines: [TimeStart-TimeEnd] :: "Some notes"
-        Example: 10:33-44:55 :: "This was cool"
+        Other lines: :: [TimeStart-TimeEnd] :: "Some notes"
+        Example: :: 10:33-44:55 :: "This was cool"
     '''
     with open(path, 'r') as f:
         url = f.readline().strip()
@@ -57,7 +57,7 @@ vid_url, audio_url = get_download_link(video_url)
 COMMAND = 'ffmpeg '
 channels = ''
 for i, (start, end) in enumerate(timestamps):
-    COMMAND += f'-ss {start} -to {end} -i "{vid_url}" -ss {start} -to {end} -i "{audio_url}" ' # Not fast-seeking seems incredibly slow, so thats why we do this
+    COMMAND += f'-ss {start} -to {end} -i "{vid_url}" -ss {start} -to {end} -i "{audio_url}" ' # Doing this allows us to only download the relevant parts of the video
     channels += f'[{i * 2}:v][{(i * 2) + 1}:a]'
 
 COMMAND += f'-filter_complex "{channels}concat=n={i + 1}:v=1:a=1[v][a]" -map "[v]" -map "[a]" {os.path.join(args.targetpath, video_filename)}.mp4'
